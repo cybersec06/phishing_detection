@@ -80,6 +80,46 @@ def classify_email(subject, body):
     final = 1 if (rule_score + ml_score) > 0 else 0
     return {"rule_based": rule_score, "ml_based": int(ml_score), "final_decision": final}
 
+# ---------- Email Fetching & Auto Detection ----------
+IMAP_SERVER = "imap.gmail.com"
+EMAIL_ACCOUNT = "your.email@gmail.com"  # replace with your Gmail
+EMAIL_PASSWORD = "your-app-password"     # use an App Password from Gmail settings
+
+def fetch_and_scan_emails():
+    print("[INFO] Checking inbox for new emails...")
+    try:
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+        mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
+        mail.select("inbox")
+        result, data = mail.search(None, 'UNSEEN')
+        email_ids = data[0].split()
+
+        for e_id in email_ids:
+            result, msg_data = mail.fetch(e_id, "(RFC822)")
+            raw_email = msg_data[0][1]
+            message = email.message_from_bytes(raw_email)
+
+            subject = message["subject"]
+            body = ""
+
+            if message.is_multipart():
+                for part in message.walk():
+                    if part.get_content_type() == "text/plain":
+                        body += part.get_payload(decode=True).decode()
+            else:
+                body = message.get_payload(decode=True).decode()
+
+            result = classify_email(subject, body)
+            print(f"\n[EMAIL] Subject: {subject}")
+            print(f"[RESULT] {result}")
+
+            if result['final_decision'] == 1:
+                with open("phishing_log.txt", "a") as log:
+                    log.write(f"PHISHING DETECTED:\nSubject: {subject}\nBody: {body}\n\n")
+
+    except Exception as e:
+        print(f"[ERROR] {e}")
+
 # ---------- Flask Endpoint ----------
 @app.route('/detect', methods=['POST'])
 def detect():
